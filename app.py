@@ -341,7 +341,7 @@ async def get_demo_page():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Kyutai STT Streaming Demo</title>
+        <title>Kyutai STT Streaming Server - @soh-kaz</title>
         <style>
             body {
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -360,18 +360,18 @@ async def get_demo_page():
                 border-radius: 20px;
                 padding: 30px;
             }
-            h1{
+            h1 {
                 text-align: center;
                 margin-bottom: 30px;
                 font-size: 2.5rem;
                 text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
             }
-            h2{
+            h2 {
                 text-align: center;
                 margin-bottom: 30px;
                 font-size: 1.8rem;
             }
-            a{
+            a {
                 color: lightgreen;
             }
             .controls {
@@ -489,6 +489,16 @@ async def get_demo_page():
                 margin: 10px 0;
                 border-left: 4px solid #ff5722;
             }
+            .visualizer-container {
+                margin: 20px 0;
+                text-align: center;
+            }
+            #audioVisualizer {
+                width: 100%;
+                height: 100px;
+                background: rgba(0, 0, 0, 0.2);
+                border-radius: 10px;
+            }
         </style>
     </head>
     <body>
@@ -516,6 +526,10 @@ async def get_demo_page():
             </div>
             
             <div id="status" class="status">Ready to record</div>
+            
+            <div class="visualizer-container">
+                <canvas id="audioVisualizer"></canvas>
+            </div>
             
             <div id="transcription" class="transcription">
                 <div style="text-align: center; opacity: 0.6; font-style: italic;">
@@ -549,6 +563,9 @@ async def get_demo_page():
                     this.currentPartialText = '';
                     this.retryCount = 0;
                     this.maxRetries = 5;
+                    this.analyser = null;
+                    this.canvas = null;
+                    this.canvasCtx = null;
                     
                     this.initializeElements();
                     this.connectWebSocket();
@@ -565,18 +582,23 @@ async def get_demo_page():
                     this.messageCountEl = document.getElementById('messageCount');
                     this.recordingTimeEl = document.getElementById('recordingTime');
                     this.permissionStatus = document.getElementById('permissionStatus');
+                    this.canvas = document.getElementById('audioVisualizer');
+                    this.canvasCtx = this.canvas.getContext('2d');
                     
                     this.permissionBtn.addEventListener('click', () => this.checkMicrophonePermission());
                     this.startBtn.addEventListener('click', () => this.startRecording());
                     this.stopBtn.addEventListener('click', () => this.stopRecording());
                     this.clearBtn.addEventListener('click', () => this.clearTranscription());
                     
+                    // Initialize visualizer canvas
+                    this.canvas.width = this.canvas.offsetWidth;
+                    this.canvas.height = 100;
+                    
                     // Check initial permission status
                     this.checkInitialPermissions();
                 }
                 
                 async checkInitialPermissions() {
-                    // Check if we're on HTTPS or localhost
                     const isSecureContext = window.isSecureContext || 
                                           location.protocol === 'https:' || 
                                           location.hostname === 'localhost' || 
@@ -587,7 +609,6 @@ async def get_demo_page():
                         return;
                     }
                     
-                    // Check if getUserMedia is available
                     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                         this.showBrowserCompatibilityError();
                         return;
@@ -602,7 +623,6 @@ async def get_demo_page():
                                 this.handlePermissionStatus(permission.state);
                             };
                         } else {
-                            // Fallback for browsers that don't support permissions API
                             this.permissionStatus.style.display = 'block';
                         }
                     } catch (error) {
@@ -679,7 +699,6 @@ async def get_demo_page():
                 }
                 
                 async checkMicrophonePermission() {
-                    // Check HTTPS requirement first
                     const isSecureContext = window.isSecureContext || 
                                           location.protocol === 'https:' || 
                                           location.hostname === 'localhost' || 
@@ -690,7 +709,6 @@ async def get_demo_page():
                         return;
                     }
                     
-                    // Check browser compatibility
                     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                         this.showBrowserCompatibilityError();
                         return;
@@ -700,12 +718,10 @@ async def get_demo_page():
                         this.permissionBtn.textContent = 'Checking permissions...';
                         this.permissionBtn.disabled = true;
                         
-                        // Request microphone access to check permissions
                         const stream = await navigator.mediaDevices.getUserMedia({ 
                             audio: true 
                         });
                         
-                        // If successful, stop the stream immediately
                         stream.getTracks().forEach(track => track.stop());
                         
                         this.handlePermissionStatus('granted');
@@ -744,7 +760,7 @@ async def get_demo_page():
                             this.connectionStatus.textContent = 'Connected';
                             this.connectionStatus.style.color = '#4CAF50';
                             console.log('WebSocket connected');
-                            this.retryCount = 0; // Reset retry count on success
+                            this.retryCount = 0;
                         };
                         
                         this.ws.onclose = () => {
@@ -776,20 +792,17 @@ async def get_demo_page():
                 
                 async startRecording() {
                     try {
-                        // Disable start button immediately to prevent multiple clicks
                         this.startBtn.disabled = true;
                         console.log('Requesting microphone access...');
                         this.showStatus('Requesting microphone permission...');
                         
-                        // Check if getUserMedia is supported
                         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                             throw new Error('getUserMedia is not supported in this browser');
                         }
                         
-                        // Request microphone access with constraints
                         const stream = await navigator.mediaDevices.getUserMedia({ 
                             audio: {
-                                sampleRate: 16000,  // Request 16kHz
+                                sampleRate: 16000,
                                 channelCount: 1,
                                 echoCancellation: true,
                                 noiseSuppression: true,
@@ -800,14 +813,12 @@ async def get_demo_page():
                         console.log('Microphone access granted');
                         this.showStatus('Microphone access granted, starting recording...');
                         
-                        // Get the actual sample rate from the stream
                         const audioTrack = stream.getAudioTracks()[0];
                         const settings = audioTrack.getSettings();
-                        const inputSampleRate = settings.sampleRate || 48000; // Fallback to 48kHz if not available
+                        const inputSampleRate = settings.sampleRate || 48000;
                         
                         console.log(`Microphone stream sample rate: ${inputSampleRate}`);
                         
-                        // Create AudioContext with the matching sample rate
                         this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
                             sampleRate: inputSampleRate
                         });
@@ -816,7 +827,11 @@ async def get_demo_page():
                         
                         const source = this.audioContext.createMediaStreamSource(stream);
                         
-                        // Create a ScriptProcessorNode or AudioWorklet for real-time processing
+                        // Setup analyser for visualization
+                        this.analyser = this.audioContext.createAnalyser();
+                        this.analyser.fftSize = 2048;
+                        source.connect(this.analyser);
+                        
                         try {
                             if (this.audioContext.audioWorklet) {
                                 await this.setupAudioWorklet(source);
@@ -834,6 +849,7 @@ async def get_demo_page():
                         
                         this.updateUI();
                         this.startTimer();
+                        this.startVisualizer();
                         this.showStatus('🔴 Recording... Speak into your microphone');
                         
                     } catch (error) {
@@ -852,7 +868,7 @@ async def get_demo_page():
                         
                         this.showError(errorMessage);
                         this.showStatus('❌ Recording failed');
-                        this.updateUI(); // Ensure UI is updated to reflect failure
+                        this.updateUI();
                     }
                 }
                 
@@ -875,7 +891,6 @@ async def get_demo_page():
                         const targetBuffer = targetCtx.createBuffer(1, targetLength, targetSampleRate);
                         const targetData = targetBuffer.getChannelData(0);
                         
-                        // Linear interpolation for resampling
                         const originalData = renderedBuffer.getChannelData(0);
                         for (let i = 0; i < targetLength; i++) {
                             const index = i * (originalLength / targetLength);
@@ -898,7 +913,6 @@ async def get_demo_page():
                 }
                 
                 setupScriptProcessor(source) {
-                    // Fallback method using ScriptProcessorNode
                     const bufferSize = 4096;
                     this.processor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
                     
@@ -914,7 +928,6 @@ async def get_demo_page():
                 }
                 
                 async setupAudioWorklet(source) {
-                    // Modern approach with AudioWorklet
                     const workletCode = `
                         class AudioProcessor extends AudioWorkletProcessor {
                             process(inputs, outputs, parameters) {
@@ -983,7 +996,6 @@ async def get_demo_page():
                 async sendAudioBuffer(audioBuffer) {
                     if (this.ws && this.ws.readyState === WebSocket.OPEN && audioBuffer.length > 0) {
                         try {
-                            // Resample to 16kHz if needed
                             const targetSampleRate = 16000;
                             let processedBuffer = audioBuffer;
                             if (this.audioContext.sampleRate !== targetSampleRate) {
@@ -995,13 +1007,11 @@ async def get_demo_page():
                                 );
                             }
                             
-                            // Convert Float32Array to Int16Array for better compression
                             const int16Array = new Int16Array(processedBuffer.length);
                             for (let i = 0; i < processedBuffer.length; i++) {
                                 int16Array[i] = Math.max(-32768, Math.min(32767, processedBuffer[i] * 32768));
                             }
                             
-                            // Convert to base64
                             const bytes = new Uint8Array(int16Array.buffer);
                             const base64 = btoa(String.fromCharCode(...bytes));
                             
@@ -1024,19 +1034,16 @@ async def get_demo_page():
                 handleTranscriptionResult(data) {
                     if (data.type === 'transcription') {
                         if (data.is_final) {
-                            // Final text
                             const finalDiv = document.createElement('div');
                             finalDiv.className = 'final-text';
                             finalDiv.textContent = data.text;
                             this.transcription.appendChild(finalDiv);
                             this.currentPartialText = '';
                         } else {
-                            // Partial text
                             this.currentPartialText += data.text;
                             this.updatePartialText();
                         }
                         
-                        // Auto-scroll
                         this.transcription.scrollTop = this.transcription.scrollHeight;
                     } else if (data.type === 'error') {
                         this.showError(data.message);
@@ -1056,6 +1063,7 @@ async def get_demo_page():
                 clearTranscription() {
                     this.transcription.innerHTML = '<div style="text-align: center; opacity: 0.6; font-style: italic;">Transcribed text will appear here...</div>';
                     this.currentPartialText = '';
+                    this.clearVisualizer();
                 }
                 
                 showStatus(message) {
@@ -1104,9 +1112,61 @@ async def get_demo_page():
                         }
                     }, 5000);
                 }
+                
+                startVisualizer() {
+                    if (!this.analyser || !this.canvas) return;
+                    
+                    const bufferLength = this.analyser.frequencyBinCount;
+                    const dataArray = new Uint8Array(bufferLength);
+                    
+                    const draw = () => {
+                        if (!this.isRecording) {
+                            this.clearVisualizer();
+                            return;
+                        }
+                        
+                        this.analyser.getByteTimeDomainData(dataArray);
+                        
+                        this.canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                        this.canvasCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                        
+                        this.canvasCtx.lineWidth = 2;
+                        this.canvasCtx.strokeStyle = '#4CAF50';
+                        this.canvasCtx.beginPath();
+                        
+                        const sliceWidth = this.canvas.width / bufferLength;
+                        let x = 0;
+                        
+                        for (let i = 0; i < bufferLength; i++) {
+                            const v = dataArray[i] / 128.0;
+                            const y = (v * this.canvas.height) / 2;
+                            
+                            if (i === 0) {
+                                this.canvasCtx.moveTo(x, y);
+                            } else {
+                                this.canvasCtx.lineTo(x, y);
+                            }
+                            
+                            x += sliceWidth;
+                        }
+                        
+                        this.canvasCtx.lineTo(this.canvas.width, this.canvas.height / 2);
+                        this.canvasCtx.stroke();
+                        
+                        requestAnimationFrame(draw);
+                    };
+                    
+                    draw();
+                }
+                
+                clearVisualizer() {
+                    if (this.canvasCtx) {
+                        this.canvasCtx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                        this.canvasCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                    }
+                }
             }
             
-            // Initialize the app when page loads
             document.addEventListener('DOMContentLoaded', () => {
                 new STTStreaming();
             });
