@@ -138,7 +138,7 @@ Contributions are welcome! Please follow these steps:
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT License.
 
 ## Contact
 
