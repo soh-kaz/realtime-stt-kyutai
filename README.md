@@ -133,6 +133,9 @@ Contributions are welcome! Please follow these steps:
 4. Push to the branch (`git push origin feature/your-feature`)
 5. Open a pull request
 
+## Screenshot
+<img src="https://github.com/soh-kaz/realtime-stt-kyutai/blob/main/screenshot.png" />
+
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
